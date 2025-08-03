@@ -1,0 +1,14 @@
+{
+  "manifest_version": 3,
+  "name": "Lichess Arrow Detector",
+  "version": "1.0",
+  "description": "Detects arrows drawn on Lichess analysis boards",
+  "permissions": [],
+  "content_scripts": [
+    {
+      "matches": ["https://lichess.org/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}
