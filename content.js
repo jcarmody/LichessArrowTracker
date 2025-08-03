@@ -1,17 +1,26 @@
 console.log("🎯 Lichess Arrow Detector loaded");
+var consoleMessage = "";
+
+function myConsoleLog(message) {
+    if (!consoleMessage.includes(message)) {
+        console.log(message);
+        consoleMessage += message;
+    }
+}
 
 function coordsToSquare(x, y) {
   // Check if board is flipped (playing as black)
   const cgWrap = document.querySelector('.cg-wrap');
   const isFlipped = cgWrap && cgWrap.classList.contains('orientation-black');
   
-  //console.log(`Coords: (${x},${y}), Board flipped: ${isFlipped}`);
+  myConsoleLog(`Board flipped: ${isFlipped}`);
+  //myConsoleLog(`Coords: (${x},${y})`);
   
   if (isFlipped) {
     // When playing as Black, board is flipped - invert coordinates
     const file = 7 - Math.floor(x + 4);
     const rank = Math.floor(y + 4) + 1;
-    //console.log(`Flipped mapping: file=${file}, rank=${rank}`);
+    //myConsoleLog(`Flipped mapping: file=${file}, rank=${rank}`);
     if (file >= 0 && file <= 7 && rank >= 1 && rank <= 8) {
       return String.fromCharCode(97 + file) + rank;
     }
@@ -19,7 +28,7 @@ function coordsToSquare(x, y) {
     // Normal orientation (playing as White)
     const file = Math.floor(x + 4);
     const rank = 8 - Math.floor(y + 4);
-    //console.log(`Normal mapping: file=${file}, rank=${rank}`);
+    //myConsoleLog(`Normal mapping: file=${file}, rank=${rank}`);
     if (file >= 0 && file <= 7 && rank >= 1 && rank <= 8) {
       return String.fromCharCode(97 + file) + rank;
     }
@@ -158,7 +167,7 @@ function getPieceAt(board, square) {
 }
 
 function formatMove(fromSquare, toSquare, board, existingArrows = []) {
-  //console.log(`🎯 formatMove: ${fromSquare} → ${toSquare}, existingArrows: ${existingArrows.length}`);
+  //myConsoleLog(`🎯 formatMove: ${fromSquare} → ${toSquare}, existingArrows: ${existingArrows.length}`);
   
   // Apply previous arrows to get the current virtual board state
   const virtualBoard = applyArrows(board, existingArrows);
@@ -166,27 +175,27 @@ function formatMove(fromSquare, toSquare, board, existingArrows = []) {
   const piece = getPieceAt(board, fromSquare); // Use original board for the moving piece
   const targetPiece = getPieceAt(virtualBoard, toSquare); // Use virtual board for target
   
-  console.log(`  Piece at ${fromSquare}: ${piece || 'empty'}`);
-  console.log(`  Target at ${toSquare}: ${targetPiece || 'empty'}`);
+  myConsoleLog(`  Piece at ${fromSquare}: ${piece || 'empty'}`);
+  myConsoleLog(`  Target at ${toSquare}: ${targetPiece || 'empty'}`);
   
   if (!piece || piece === '') {
-    //console.log(`  No piece found at ${fromSquare}`);
+    //myConsoleLog(`  No piece found at ${fromSquare}`);
     return `${fromSquare} → ${toSquare}`;
   }
   
   const pieceType = piece.toLowerCase();
   const isCapture = targetPiece && targetPiece !== '';
   
-  //console.log(`  Piece type: ${pieceType}, isCapture: ${isCapture}`);
+  //myConsoleLog(`  Piece type: ${pieceType}, isCapture: ${isCapture}`);
   
   if (pieceType === 'p') {
     if (isCapture) {
       const fromFile = fromSquare[0];
       const result = `${fromFile}x${toSquare}`;
-      //console.log(`  Pawn capture: ${result}`);
+      //myConsoleLog(`  Pawn capture: ${result}`);
       return result;
     } else {
-      //console.log(`  Pawn move: ${toSquare}`);
+      //myConsoleLog(`  Pawn move: ${toSquare}`);
       return toSquare;
     }
   }
@@ -199,11 +208,11 @@ function formatMove(fromSquare, toSquare, board, existingArrows = []) {
   
   if (isCapture) {
     const result = `${pieceSymbol}x${toSquare}`;
-    //console.log(`  Piece capture: ${result}`);
+    //myConsoleLog(`  Piece capture: ${result}`);
     return result;
   } else {
     const result = pieceSymbol + toSquare;
-    //console.log(`  Piece move: ${result}`);
+    //myConsoleLog(`  Piece move: ${result}`);
     return result;
   }
 }
@@ -319,22 +328,22 @@ function postToGameChat(movesText) {
 }
 
 function detectArrows() {
-  //console.log("🔍 detectArrows called");
+  //myConsoleLog("🔍 detectArrows called");
   
   const fen = getFEN();
   if (!fen) {
-    //console.log("❌ No FEN found");
+    //myConsoleLog("❌ No FEN found");
     return;
   }
   
-  //console.log("📋 FEN:", fen);
+  console.log("📋 FEN:", fen);
   
   const board = fenToBoard(fen);
   const lines = document.querySelectorAll('svg line');
   const arrows = [];
   const moves = [];
   
-  //console.log(`🔍 Found ${lines.length} SVG lines`);
+  //myConsoleLog(`🔍 Found ${lines.length} SVG lines`);
   
   lines.forEach((line) => {
     const markerEnd = line.getAttribute('marker-end');
@@ -347,10 +356,10 @@ function detectArrows() {
       const to = coordsToSquare(x2, y2);
       
       if (from && to) {
-        console.log(`Arrow detected: ${from} → ${to}`);
+        myConsoleLog(`Arrow detected: ${from} → ${to}`);
         arrows.push({ from, to });
       } else {
-        console.log(`Arrow rejected: ${from} → ${to} (null coordinates)`);
+        myConsoleLog(`Arrow rejected: ${from} → ${to} (null coordinates)`);
       }
     }
   });
@@ -360,17 +369,17 @@ function detectArrows() {
   // Only process if we have arrows and they've changed
   const currentArrowsString = JSON.stringify(arrows);
   if (arrows.length > 0 && currentArrowsString !== window.lastArrowsString) {
-    //console.log("🔄 Processing arrows for moves");
+    //myConsoleLog("🔄 Processing arrows for moves");
     
     arrows.forEach((arrow, index) => {
       const previousArrows = arrows.slice(0, index);
       const move = formatMove(arrow.from, arrow.to, board, previousArrows);
       moves.push(move);
-      console.log(`🟢 Move ${index + 1}: ${arrow.from} → ${arrow.to} = ${move}`);
+      myConsoleLog(`🟢 Move ${index + 1}: ${arrow.from} → ${arrow.to} = ${move}`);
     });
     
     const movesText = moves.join(', ');
-    console.log(`📋 Final result: ${movesText}`);
+    myConsoleLog(`📋 Final result: ${movesText}`);
     copyToClipboard(movesText);
     postToGameChat(movesText);
     
@@ -378,11 +387,12 @@ function detectArrows() {
     window.lastArrowsString = currentArrowsString;
   } else if (arrows.length === 0 && window.lastArrowsString) {
     // Arrows were cleared - clear the chat input
-    //console.log("🧹 Clearing arrows and chat");
     postToGameChat(''); // Empty string clears the chat
     window.lastArrowsString = null;
+    consoleMessage
+    console.clear();
   } else {
-    //console.log("⏭️ Arrows unchanged, skipping");
+    //myConsoleLog("⏭️ Arrows unchanged, skipping");
   }
 }
 
