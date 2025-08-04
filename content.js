@@ -9,7 +9,7 @@ function myConsoleLog(message) {
 }
 
 function coordsToSquare(x, y) {
-  // Check if board is flipped (playing as black)
+  // Check if board is flipped (playing as black).  Only called from detectArrows()
   const cgWrap = document.querySelector('.cg-wrap');
   const isFlipped = cgWrap && cgWrap.classList.contains('orientation-black');
   
@@ -48,6 +48,7 @@ function getFEN() {
     // Check if board is flipped
     const cgWrap = document.querySelector('.cg-wrap');
     const isFlipped = cgWrap && cgWrap.classList.contains('orientation-black');
+    myConsoleLog(`Playing as ${isFlipped ? 'Black' : 'White'}`);
     
     // Get board dimensions dynamically
     const boardElement = document.querySelector('.cg-wrap');
@@ -60,7 +61,6 @@ function getFEN() {
     
     pieces.forEach((piece) => {
       const classes = piece.className;
-      
       // Skip ghost pieces
       if (classes.includes('ghost') || classes.includes('fading')) {
         return;
@@ -73,6 +73,7 @@ function getFEN() {
         const color = colorMatch[1];
         const pieceType = pieceMatch[1];
         const transform = piece.style.transform;
+        myConsoleLog(`${pieceType} found`);
         
         if (transform) {
           const transformMatch = transform.match(/translate\(([^,]+),\s*([^)]+)\)/);
@@ -85,14 +86,15 @@ function getFEN() {
             
             if (isFlipped) {
               // When playing as black, coordinates are flipped
-              file = 7 - Math.round(x / squareSize);
-              rank = 7 - Math.round(y / squareSize);
+              file = 7 - Math.floor(x / squareSize);
+              rank = Math.floor(y / squareSize);
             } else {
               // Normal orientation (playing as white)
-              file = Math.round(x / squareSize);
-              rank = Math.round(y / squareSize);
+              file = Math.floor(x / squareSize);
+              rank = 7 - Math.floor(y / squareSize);
             }
-            
+            myConsoleLog(`x: ${x}, y: ${y} translates to rank: ${rank} and file: ${file}`);
+            // Ensure coordinates are within bounds
             if (file >= 0 && file < 8 && rank >= 0 && rank < 8) {
               const pieceChar = pieceType === 'knight' ? 'n' :
                                pieceType === 'bishop' ? 'b' :
