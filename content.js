@@ -1,5 +1,11 @@
 console.log("🎯 Lichess Arrow Detector loaded");
 var consoleMessage = "";
+let isMouseDown = false;
+
+
+document.addEventListener('pointerdown', () => isMouseDown = true, true);
+document.addEventListener('pointerup', () => isMouseDown = false, true);
+
 
 function myConsoleLog(message) {
     if (!consoleMessage.includes(message)) {
@@ -58,6 +64,7 @@ function getFEN() {
     
     const boardRect = boardElement.getBoundingClientRect();
     const squareSize = boardRect.width / 8;
+    myConsoleLog(squareSize);
     
     pieces.forEach((piece) => {
       const classes = piece.className;
@@ -73,27 +80,26 @@ function getFEN() {
         const color = colorMatch[1];
         const pieceType = pieceMatch[1];
         const transform = piece.style.transform;
-        myConsoleLog(`${pieceType} found`);
+        //console.log(`${color} ${pieceType} found`);
         
         if (transform) {
           const transformMatch = transform.match(/translate\(([^,]+),\s*([^)]+)\)/);
           if (transformMatch) {
-            const x = parseFloat(transformMatch[1].replace('px', ''));
-            const y = parseFloat(transformMatch[2].replace('px', ''));
+            let x = parseFloat(transformMatch[1].replace('px', ''));
+            let y = parseFloat(transformMatch[2].replace('px', ''));
             
             // Calculate file and rank based on board orientation
             let file, rank;
             
             if (isFlipped) {
               // When playing as black, coordinates are flipped
-              file = 7 - Math.floor(x / squareSize);
-              rank = Math.floor(y / squareSize);
+              file = Math.floor((x + squareSize / 2) / squareSize);
+              rank = Math.floor((y + squareSize / 2) / squareSize);
             } else {
               // Normal orientation (playing as white)
-              file = Math.floor(x / squareSize);
-              rank = 7 - Math.floor(y / squareSize);
+              file = Math.floor((x + squareSize / 2) / squareSize);
+              rank = Math.floor((y + squareSize / 2) / squareSize);
             }
-            myConsoleLog(`x: ${x}, y: ${y} translates to rank: ${rank} and file: ${file}`);
             // Ensure coordinates are within bounds
             if (file >= 0 && file < 8 && rank >= 0 && rank < 8) {
               const pieceChar = pieceType === 'knight' ? 'n' :
@@ -105,6 +111,7 @@ function getFEN() {
               
               const fenPiece = color === 'white' ? pieceChar.toUpperCase() : pieceChar;
               board[rank][file] = fenPiece;
+              //myConsoleLog(`x: ${x}, y: ${y} translates to ${fenPiece} at file: ${file} and rank: ${rank}`);
             }
           }
         }
@@ -131,10 +138,11 @@ function getFEN() {
       }
       if (rank < 7) fen += '/';
     }
-    
+    myConsoleLog(`📋 FEN: ${fen}`);
     return fen + ' w - - 0 1';
     
   } catch (error) {
+    console.log(`getFEN error ${error.name} ${error.message} ${error.stack}`);
     return null;
   }
 }
@@ -165,7 +173,7 @@ function fenToBoard(fen) {
 function getPieceAt(board, square) {
   const file = square.charCodeAt(0) - 97;
   const rank = parseInt(square[1]) - 1;
-  return board[7-rank][file];
+  return board[rank][file];
 }
 
 function formatMove(fromSquare, toSquare, board, existingArrows = []) {
@@ -174,7 +182,7 @@ function formatMove(fromSquare, toSquare, board, existingArrows = []) {
   // Apply previous arrows to get the current virtual board state
   const virtualBoard = applyArrows(board, existingArrows);
   
-  const piece = getPieceAt(board, fromSquare); // Use original board for the moving piece
+  const piece = getPieceAt(virtualBoard, fromSquare); // Use original board for the moving piece - NO!
   const targetPiece = getPieceAt(virtualBoard, toSquare); // Use virtual board for target
   
   myConsoleLog(`  Piece at ${fromSquare}: ${piece || 'empty'}`);
@@ -230,8 +238,8 @@ function applyArrows(board, arrows) {
     
     const piece = virtualBoard[7-fromRank][fromFile];
     if (piece && piece !== '') {
-      virtualBoard[7-toRank][toFile] = piece;
-      virtualBoard[7-fromRank][fromFile] = '';
+      virtualBoard[toRank][toFile] = piece;
+      virtualBoard[fromRank][fromFile] = '';
     }
   });
   
@@ -329,23 +337,12 @@ function postToGameChat(movesText) {
   }
 }
 
-function detectArrows() {
+function detectArrows() { // this happens a lot more frequently than when an arrow is drawn...
   //myConsoleLog("🔍 detectArrows called");
+  // Check for arrow changes FIRST, before calculating FEN
   
-  const fen = getFEN();
-  if (!fen) {
-    //myConsoleLog("❌ No FEN found");
-    return;
-  }
-  
-  console.log("📋 FEN:", fen);
-  
-  const board = fenToBoard(fen);
   const lines = document.querySelectorAll('svg line');
   const arrows = [];
-  const moves = [];
-  
-  //myConsoleLog(`🔍 Found ${lines.length} SVG lines`);
   
   lines.forEach((line) => {
     const markerEnd = line.getAttribute('marker-end');
@@ -366,13 +363,37 @@ function detectArrows() {
     }
   });
   
-  //console.log(`🎯 Total arrows: ${arrows.length}`);
-  
-  // Only process if we have arrows and they've changed
+  // Handle arrow clearing case
+  if (arrows.length === 0 && window.lastArrowsString) {
+    // Arrows were cleared - clear the chat input
+    postToGameChat(''); // Empty string clears the chat
+    window.lastArrowsString = null;
+    consoleMessage = "";
+    console.clear();
+    return;
+  }
+      
   const currentArrowsString = JSON.stringify(arrows);
-  if (arrows.length > 0 && currentArrowsString !== window.lastArrowsString) {
-    //myConsoleLog("🔄 Processing arrows for moves");
-    
+  if (isMouseDown || (!isMouseDown && currentArrowsString === window.lastArrowsString))
+  {
+    return;
+  }
+  console.log(`${isMouseDown} ${currentArrowsString} ${window.lastArrowsString}`);
+
+  // Only NOW calculate FEN if arrows actually changed
+  const fen = getFEN();
+  if (!fen) {
+    myConsoleLog("❌ No FEN found");
+    return;
+  }
+  
+  myConsoleLog("📋 FEN: ", fen);
+  
+  const board = fenToBoard(fen);
+  const moves = [];
+  
+  // Only process if we have arrows
+  if (arrows.length > 0) {    
     arrows.forEach((arrow, index) => {
       const previousArrows = arrows.slice(0, index);
       const move = formatMove(arrow.from, arrow.to, board, previousArrows);
@@ -387,21 +408,13 @@ function detectArrows() {
     
     // Remember this arrow state
     window.lastArrowsString = currentArrowsString;
-  } else if (arrows.length === 0 && window.lastArrowsString) {
-    // Arrows were cleared - clear the chat input
-    postToGameChat(''); // Empty string clears the chat
-    window.lastArrowsString = null;
-    consoleMessage
-    console.clear();
-  } else {
-    //myConsoleLog("⏭️ Arrows unchanged, skipping");
   }
 }
 
 function setup() {
   const observer = new MutationObserver(() => {
     clearTimeout(window.arrowTimeout);
-    window.arrowTimeout = setTimeout(detectArrows, 100);
+    window.arrowTimeout = setTimeout(detectArrows, 0); // I used 0 ms delay because (I think) the delay causes me to miss the coordinates of a piece landing
   });
   
   const targets = [
@@ -417,9 +430,20 @@ function setup() {
       attributes: true
     });
   });
-  
+
   detectArrows();
 }
+
+document.addEventListener('mousedown', (e) => {
+  isMouseDown = true;
+  myConsoleLog(`🖱️ Mouse down - ctrl: ${e.ctrlKey}, meta: ${e.metaKey}`);
+});
+
+document.addEventListener('mouseup', (e) => {
+  isMouseDown = false;
+  myConsoleLog(`🖱️ Mouse up - ctrl: ${e.ctrlKey}, meta: ${e.metaKey}`);
+});
+
 
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', setup);
