@@ -338,8 +338,6 @@ function postToGameChat(movesText) {
 }
 
 function detectArrows() { // this happens a lot more frequently than when an arrow is drawn...
-  //myConsoleLog("🔍 detectArrows called");
-  // Check for arrow changes FIRST, before calculating FEN
   
   const lines = document.querySelectorAll('svg line');
   const arrows = [];
@@ -374,7 +372,7 @@ function detectArrows() { // this happens a lot more frequently than when an arr
   }
       
   const currentArrowsString = JSON.stringify(arrows);
-  if (isMouseDown || (!isMouseDown && currentArrowsString === window.lastArrowsString))
+  if (isMouseDown || arrows.length === 0 || (!isMouseDown && currentArrowsString === window.lastArrowsString)) // Check for arrow changes FIRST, before calculating FEN
   {
     return;
   }
