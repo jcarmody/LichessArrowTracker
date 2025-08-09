@@ -1,7 +1,7 @@
 console.log("🎯 Lichess Arrow Detector loaded");
 var consoleMessage = "";
 let isMouseDown = false;
-
+window.cachedArrows = new Map();
 
 document.addEventListener('pointerdown', () => isMouseDown = true, true);
 document.addEventListener('pointerup', () => isMouseDown = false, true);
@@ -19,14 +19,10 @@ function coordsToSquare(x, y) {
   const cgWrap = document.querySelector('.cg-wrap');
   const isFlipped = cgWrap && cgWrap.classList.contains('orientation-black');
   
-  myConsoleLog(`Board flipped: ${isFlipped}`);
-  //myConsoleLog(`Coords: (${x},${y})`);
-  
   if (isFlipped) {
     // When playing as Black, board is flipped - invert coordinates
     const file = 7 - Math.floor(x + 4);
     const rank = Math.floor(y + 4) + 1;
-    //myConsoleLog(`Flipped mapping: file=${file}, rank=${rank}`);
     if (file >= 0 && file <= 7 && rank >= 1 && rank <= 8) {
       return String.fromCharCode(97 + file) + rank;
     }
@@ -34,7 +30,6 @@ function coordsToSquare(x, y) {
     // Normal orientation (playing as White)
     const file = Math.floor(x + 4);
     const rank = 8 - Math.floor(y + 4);
-    //myConsoleLog(`Normal mapping: file=${file}, rank=${rank}`);
     if (file >= 0 && file <= 7 && rank >= 1 && rank <= 8) {
       return String.fromCharCode(97 + file) + rank;
     }
@@ -48,7 +43,7 @@ function roundToNearestHalf(num) {
 
 function getFEN() {
   try {
-    const pieces = document.querySelectorAll('piece');
+    //const pieces = document.querySelectorAll('.main-board .cg-wrap piece');
     const board = Array(8).fill().map(() => Array(8).fill(''));
     
     // Check if board is flipped
@@ -65,7 +60,19 @@ function getFEN() {
     const boardRect = boardElement.getBoundingClientRect();
     const squareSize = boardRect.width / 8;
     myConsoleLog(squareSize);
-    
+
+    const allPieces = document.querySelectorAll('piece');
+
+    const pieces = Array.from(allPieces).filter(piece => {
+        const pieceRect = piece.getBoundingClientRect();
+  
+        // Check if piece is within board boundaries
+        return pieceRect.left >= boardRect.left &&
+             pieceRect.right <= boardRect.right &&
+             pieceRect.top >= boardRect.top &&
+             pieceRect.bottom <= boardRect.bottom;
+    });
+      
     pieces.forEach((piece) => {
       const classes = piece.className;
       // Skip ghost pieces
@@ -93,12 +100,12 @@ function getFEN() {
             
             if (isFlipped) {
               // When playing as black, coordinates are flipped
-              file = Math.floor((x + squareSize / 2) / squareSize);
+              file = 7 - Math.floor((x + squareSize / 2) / squareSize);
               rank = Math.floor((y + squareSize / 2) / squareSize);
             } else {
               // Normal orientation (playing as white)
               file = Math.floor((x + squareSize / 2) / squareSize);
-              rank = Math.floor((y + squareSize / 2) / squareSize);
+              rank = 7 - Math.floor((y + squareSize / 2) / squareSize);
             }
             // Ensure coordinates are within bounds
             if (file >= 0 && file < 8 && rank >= 0 && rank < 8) {
@@ -177,35 +184,28 @@ function getPieceAt(board, square) {
 }
 
 function formatMove(fromSquare, toSquare, board, existingArrows = []) {
-  //myConsoleLog(`🎯 formatMove: ${fromSquare} → ${toSquare}, existingArrows: ${existingArrows.length}`);
-  
   // Apply previous arrows to get the current virtual board state
   const virtualBoard = applyArrows(board, existingArrows);
   
   const piece = getPieceAt(virtualBoard, fromSquare); // Use original board for the moving piece - NO!
-  const targetPiece = getPieceAt(virtualBoard, toSquare); // Use virtual board for target
+  let targetPiece = getPieceAt(virtualBoard, toSquare); // Use virtual board for target
   
   myConsoleLog(`  Piece at ${fromSquare}: ${piece || 'empty'}`);
   myConsoleLog(`  Target at ${toSquare}: ${targetPiece || 'empty'}`);
   
   if (!piece || piece === '') {
-    //myConsoleLog(`  No piece found at ${fromSquare}`);
     return `${fromSquare} → ${toSquare}`;
   }
   
   const pieceType = piece.toLowerCase();
   const isCapture = targetPiece && targetPiece !== '';
   
-  //myConsoleLog(`  Piece type: ${pieceType}, isCapture: ${isCapture}`);
-  
   if (pieceType === 'p') {
     if (isCapture) {
       const fromFile = fromSquare[0];
       const result = `${fromFile}x${toSquare}`;
-      //myConsoleLog(`  Pawn capture: ${result}`);
       return result;
     } else {
-      //myConsoleLog(`  Pawn move: ${toSquare}`);
       return toSquare;
     }
   }
@@ -217,12 +217,11 @@ function formatMove(fromSquare, toSquare, board, existingArrows = []) {
                      pieceType === 'k' ? 'K' : '';
   
   if (isCapture) {
-    const result = `${pieceSymbol}x${toSquare}`;
-    //myConsoleLog(`  Piece capture: ${result}`);
+    if(targetPiece.toLowerCase() === 'p') {targetPiece = toSquare;}
+    const result = `${pieceSymbol}x${targetPiece}`; // was toSquare
     return result;
   } else {
     const result = pieceSymbol + toSquare;
-    //myConsoleLog(`  Piece move: ${result}`);
     return result;
   }
 }
@@ -235,8 +234,8 @@ function applyArrows(board, arrows) {
     const fromRank = parseInt(arrow.from[1]) - 1;
     const toFile = arrow.to.charCodeAt(0) - 97;
     const toRank = parseInt(arrow.to[1]) - 1;
-    
-    const piece = virtualBoard[7-fromRank][fromFile];
+    //myConsoleLog(`from:${fromFile}, ${fromRank} - to:${toFile}, ${toRank}`);
+    const piece = virtualBoard[fromRank][fromFile];
     if (piece && piece !== '') {
       virtualBoard[toRank][toFile] = piece;
       virtualBoard[fromRank][fromFile] = '';
@@ -338,25 +337,40 @@ function postToGameChat(movesText) {
 }
 
 function detectArrows() { // this happens a lot more frequently than when an arrow is drawn...
+  if(isMouseDown) {
+      return;
+  }
   
   const lines = document.querySelectorAll('svg line');
   const arrows = [];
   
-  lines.forEach((line) => {
+  lines.forEach((line, index) => {
     const markerEnd = line.getAttribute('marker-end');
     if (markerEnd && markerEnd.includes('arrowhead')) {
       const x1 = parseFloat(line.getAttribute('x1'));
       const y1 = parseFloat(line.getAttribute('y1'));
       const x2 = roundToNearestHalf(parseFloat(line.getAttribute('x2')));
       const y2 = roundToNearestHalf(parseFloat(line.getAttribute('y2')));
-      const from = coordsToSquare(x1, y1);
-      const to = coordsToSquare(x2, y2);
+      const lineKey = `${x1},${y1}`;
+      
+      // Use cached coordinates if we've seen this line before
+      let from, to;
+      if (window.cachedArrows.has(lineKey)) {
+        const cached = window.cachedArrows.get(lineKey);
+        from = cached.from;
+        to = cached.to;
+        myConsoleLog(`Using cached: ${from} → ${to}`);
+      } else {
+        from = coordsToSquare(x1, y1);
+        to = coordsToSquare(x2, y2);
+        if (from && to) {
+          window.cachedArrows.set(lineKey, { from, to });
+          myConsoleLog(`Cached new: ${from} → ${to}`);
+        }
+      }
       
       if (from && to) {
-        myConsoleLog(`Arrow detected: ${from} → ${to}`);
         arrows.push({ from, to });
-      } else {
-        myConsoleLog(`Arrow rejected: ${from} → ${to} (null coordinates)`);
       }
     }
   });
@@ -374,14 +388,14 @@ function detectArrows() { // this happens a lot more frequently than when an arr
   const currentArrowsString = JSON.stringify(arrows);
   if (isMouseDown || arrows.length === 0 || (!isMouseDown && currentArrowsString === window.lastArrowsString)) // Check for arrow changes FIRST, before calculating FEN
   {
+    getFEN();
     return;
   }
-  console.log(`${isMouseDown} ${currentArrowsString} ${window.lastArrowsString}`);
+  myConsoleLog(`${isMouseDown} ${currentArrowsString} ---- ${window.lastArrowsString}`);
 
   // Only NOW calculate FEN if arrows actually changed
   const fen = getFEN();
   if (!fen) {
-    myConsoleLog("❌ No FEN found");
     return;
   }
   
