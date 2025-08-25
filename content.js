@@ -47,12 +47,11 @@ function getFEN() {
     const board = Array(8).fill().map(() => Array(8).fill(''));
     
     // Check if board is flipped
-    const cgWrap = document.querySelector('.cg-wrap');
-    const isFlipped = cgWrap && cgWrap.classList.contains('orientation-black');
+    const boardElement = document.querySelector('.cg-wrap');
+    const isFlipped = boardElement && boardElement.classList.contains('orientation-black');
     myConsoleLog(`Playing as ${isFlipped ? 'Black' : 'White'}`);
     
     // Get board dimensions dynamically
-    const boardElement = document.querySelector('.cg-wrap');
     if (!boardElement) {
       return null;
     }
@@ -101,11 +100,11 @@ function getFEN() {
             if (isFlipped) {
               // When playing as black, coordinates are flipped
               file = 7 - Math.floor((x + squareSize / 2) / squareSize);
-              rank = Math.floor((y + squareSize / 2) / squareSize);
+              rank = 7 - Math.floor((y + squareSize / 2) / squareSize);
             } else {
               // Normal orientation (playing as white)
               file = Math.floor((x + squareSize / 2) / squareSize);
-              rank = 7 - Math.floor((y + squareSize / 2) / squareSize);
+              rank = Math.floor((y + squareSize / 2) / squareSize);
             }
             // Ensure coordinates are within bounds
             if (file >= 0 && file < 8 && rank >= 0 && rank < 8) {
@@ -155,7 +154,7 @@ function getFEN() {
 }
 
 function fenToBoard(fen) {
-  const board = Array(8).fill().map(() => Array(8).fill(''));
+  const board = Array(8).fill().map(() => Array(8).fill(' '));
   const position = fen.split(' ')[0];
   const ranks = position.split('/');
   
@@ -173,14 +172,21 @@ function fenToBoard(fen) {
       }
     }
   }
-  
+  //boardToConsole(board);
   return board;
+}
+
+function boardToConsole(board) {
+  for (let i = 0; i < board.length; i++) {
+    console.log(board[i].join('|'));
+  }
 }
 
 function getPieceAt(board, square) {
   const file = square.charCodeAt(0) - 97;
   const rank = parseInt(square[1]) - 1;
-  return board[rank][file];
+  // myConsoleLog(`${board[rank][file]} rank:${rank + 1} file:${file + 1}`);
+  return board[7 - rank][file];
 }
 
 function formatMove(fromSquare, toSquare, board, existingArrows = []) {
@@ -198,7 +204,7 @@ function formatMove(fromSquare, toSquare, board, existingArrows = []) {
   }
   
   const pieceType = piece.toLowerCase();
-  const isCapture = targetPiece && targetPiece !== '';
+  const isCapture = targetPiece && targetPiece !== ' ';
   
   if (pieceType === 'p') {
     if (isCapture) {
@@ -228,8 +234,10 @@ function formatMove(fromSquare, toSquare, board, existingArrows = []) {
 
 function applyArrows(board, arrows) {
   const virtualBoard = board.map(row => [...row]);
-  
+  console.log(`There are ${arrows.length} arrows.`);
+  let i = 0;
   arrows.forEach(arrow => {
+    console.log(`${++i}`);
     const fromFile = arrow.from.charCodeAt(0) - 97;
     const fromRank = parseInt(arrow.from[1]) - 1;
     const toFile = arrow.to.charCodeAt(0) - 97;
@@ -448,12 +456,12 @@ function setup() {
 
 document.addEventListener('mousedown', (e) => {
   isMouseDown = true;
-  myConsoleLog(`🖱️ Mouse down - ctrl: ${e.ctrlKey}, meta: ${e.metaKey}`);
+  //myConsoleLog(`🖱️ Mouse down - ctrl: ${e.ctrlKey}, meta: ${e.metaKey}`);
 });
 
 document.addEventListener('mouseup', (e) => {
   isMouseDown = false;
-  myConsoleLog(`🖱️ Mouse up - ctrl: ${e.ctrlKey}, meta: ${e.metaKey}`);
+  //myConsoleLog(`🖱️ Mouse up - ctrl: ${e.ctrlKey}, meta: ${e.metaKey}`);
 });
 
 
