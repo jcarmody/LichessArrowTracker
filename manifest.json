@@ -1,14 +1,14 @@
 {
   "manifest_version": 3,
-  "name": "Lichess Arrow Detector",
-  "version": "1.0",
-  "description": "Detects arrows drawn on Lichess analysis boards",
+  "name": "Lichess Arrow Tracker",
+  "version": "2.0",
+  "description": "Converts drawn arrows on Lichess into proper chess notation in chat",
   "permissions": [],
   "content_scripts": [
     {
-      "matches": ["https://lichess.org/*"],
+      "matches": ["*://lichess.org/*"],
       "js": ["content.js"],
-      "run_at": "document_idle"
+      "run_at": "document_end"
     }
   ]
 }
