@@ -1,4 +1,4 @@
-console.log("Lichess Arrow Tracker v7.1 loaded");
+console.log("Lichess Arrow Tracker v7.5 loaded");
 
 let chess = null;
 let lastArrows = new Set();
@@ -7,8 +7,51 @@ let mouseButtonDown = false;
 let lastKnownFEN = "";
 let lastFENCheck = 0;
 
-function hasChatInput() {
-  return !!document.querySelector('input.mchat__say, .mchat__say');
+function getMyUsername() {
+  // Primary method: the user_tag button in the top bar
+  const userTag = document.getElementById('user_tag');
+  if (userTag) {
+    const name = userTag.textContent.trim();
+    if (name) return name.toLowerCase();
+  }
+
+  // Fallback
+  const headerLink = document.querySelector('a.user-link[href^="/@/"]');
+  if (headerLink) {
+    const name = headerLink.textContent.trim();
+    if (name) return name.toLowerCase();
+  }
+
+  return null;
+}
+
+function isSpectating() {
+  const myUsername = getMyUsername();
+  if (!myUsername) {
+    console.log("Could not detect my username");
+    return true; // safe default
+  }
+
+  console.log("Detected my username:", myUsername);
+
+  // Find the two players on the board
+  const playerLinks = document.querySelectorAll('.player .user-link, .player-top .user-link, .player-bottom .user-link');
+  
+  let imPlaying = false;
+
+  playerLinks.forEach(link => {
+    const name = link.textContent.trim().toLowerCase();
+    if (name.includes(myUsername)) {
+      imPlaying = true;
+    }
+  });
+
+  // Extra check: if there are exactly two player links and neither is me, we're spectating
+  if (playerLinks.length >= 2 && !imPlaying) {
+    return true;
+  }
+
+  return !imPlaying;
 }
 
 function clearChatInput() {
@@ -45,7 +88,9 @@ function fillChatInput() {
   if (!chatInput) return;
 
   const context = getLastRealMoveContext();
-  let fullText = "/w ";
+  const prefix = isSpectating() ? "" : "/w ";
+
+  let fullText = prefix;
 
   if (context) {
     fullText += `(${context}) `;
@@ -71,6 +116,10 @@ function initExtension() {
   chess = new Chess();
   syncBoardToChess();
 
+  // Debug: show detected username on load
+  const username = getMyUsername();
+  console.log("My detected username:", username || "unknown");
+
   document.addEventListener('mousedown', e => {
     if (e.button === 2) mouseButtonDown = true;
   });
@@ -92,7 +141,7 @@ function initExtension() {
     }
   });
 
-  console.log("✅ v7.1 ready — precise edge coordinate mapping");
+  console.log("✅ v7.5 ready — improved player detection");
 }
 
 async function syncBoardToChess() {
@@ -251,8 +300,6 @@ function addFinalArrowToHistory() {
 }
 
 function coordsToSquare(x, y) {
-  // Precise mapping for Lichess cg-shapes viewBox="-4 -4 8 8"
-  // We add a small bias toward the center of the square for better edge handling
   const file = Math.floor(((x + 4) / 8) * 8);
   const rank = Math.floor(((y + 4) / 8) * 8);
 
