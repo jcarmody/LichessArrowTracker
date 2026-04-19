@@ -1,13 +1,13 @@
 {
   "manifest_version": 3,
   "name": "Lichess Arrow Tracker",
-  "version": "2.0",
-  "description": "Converts drawn arrows on Lichess into proper chess notation in chat",
+  "version": "2.1",
+  "description": "Converts drawn arrows on Lichess into proper chess notation",
   "permissions": [],
   "content_scripts": [
     {
       "matches": ["*://lichess.org/*"],
-      "js": ["content.js"],
+      "js": ["chess.min.js", "content.js"],
       "run_at": "document_end"
     }
   ]
