@@ -1,31 +1,65 @@
-console.log("Lichess Arrow Tracker v3.5 loaded");
+console.log("Lichess Arrow Tracker v7.1 loaded");
 
 let chess = null;
 let lastArrows = new Set();
-let isFlipped = false;
-let displayBox = null;
+let moveHistory = [];
 let mouseButtonDown = false;
+let lastKnownFEN = "";
+let lastFENCheck = 0;
 
-function createDisplayBox() {
-  if (displayBox) return;
-  displayBox = document.createElement('div');
-  displayBox.style.cssText = `
-    position: fixed; top: 20px; right: 20px; background: rgba(0,0,0,0.9); color: #0f0;
-    padding: 16px 22px; border-radius: 8px; font-family: monospace; font-size: 22px;
-    z-index: 999999; border: 3px solid #0f0; pointer-events: none; display: none;
-    min-width: 130px; text-align: center; font-weight: bold;
-  `;
-  document.body.appendChild(displayBox);
+function hasChatInput() {
+  return !!document.querySelector('input.mchat__say, .mchat__say');
 }
 
-function showMove(text) {
-  createDisplayBox();
-  displayBox.textContent = text;
-  displayBox.style.display = 'block';
-  clearTimeout(displayBox.timeout);
-  displayBox.timeout = setTimeout(() => {
-    if (displayBox) displayBox.style.display = 'none';
-  }, 6500);
+function clearChatInput() {
+  const chatInput = document.querySelector('input.mchat__say, .mchat__say');
+  if (chatInput) {
+    chatInput.value = '';
+    const event = new Event('input', { bubbles: true });
+    chatInput.dispatchEvent(event);
+  }
+}
+
+function getLastRealMoveContext() {
+  const moveList = document.querySelector('l4x');
+  if (!moveList) return "";
+
+  const moves = moveList.querySelectorAll('kwdb');
+  if (moves.length === 0) return "";
+
+  const lastMoveText = moves[moves.length - 1].textContent.trim();
+  const moveNumber = Math.floor(moves.length / 2) + 1;
+  const isBlackMove = (moves.length % 2 === 0);
+
+  if (isBlackMove) {
+    return `${moveNumber}..${lastMoveText}`;
+  } else {
+    return `${moveNumber}.${lastMoveText}`;
+  }
+}
+
+function fillChatInput() {
+  if (moveHistory.length === 0) return;
+
+  const chatInput = document.querySelector('input.mchat__say, .mchat__say');
+  if (!chatInput) return;
+
+  const context = getLastRealMoveContext();
+  let fullText = "/w ";
+
+  if (context) {
+    fullText += `(${context}) `;
+  }
+
+  fullText += moveHistory.join(', ');
+
+  chatInput.focus();
+  chatInput.value = fullText;
+
+  const event = new Event('input', { bubbles: true });
+  chatInput.dispatchEvent(event);
+
+  console.log("Filled chat with:", fullText);
 }
 
 function initExtension() {
@@ -37,7 +71,6 @@ function initExtension() {
   chess = new Chess();
   syncBoardToChess();
 
-  // Mouse tracking - right-click only
   document.addEventListener('mousedown', e => {
     if (e.button === 2) mouseButtonDown = true;
   });
@@ -45,29 +78,64 @@ function initExtension() {
   document.addEventListener('mouseup', e => {
     if (e.button === 2) {
       mouseButtonDown = false;
-      // Small delay so Lichess finishes drawing the final arrow
-      setTimeout(processFinalArrows, 80);
+      setTimeout(addFinalArrowToHistory, 150);
     }
   });
 
-  // Observer only watches for board changes, but never processes during drag
-  const observer = new MutationObserver(() => {
-    if (!mouseButtonDown) {
-      // Only do light cleanup when not dragging
-      lastArrows.clear(); // reset when arrows are removed
-    }
-  });
-
+  const observer = new MutationObserver(handleBoardChanges);
   observer.observe(document.body, { childList: true, subtree: true });
 
-  console.log("✅ v3.5 ready — processes arrows ONLY after mouse release");
+  document.addEventListener('keydown', e => {
+    if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 'c') {
+      e.preventDefault();
+      fillChatInput();
+    }
+  });
+
+  console.log("✅ v7.1 ready — precise edge coordinate mapping");
 }
 
 async function syncBoardToChess() {
   const fen = await getCurrentFEN();
   if (fen && chess) {
-    try { chess.load(fen); } catch (e) {}
+    try {
+      chess.load(fen);
+      lastKnownFEN = fen;
+      console.log(`Virtual board synced. Turn: ${chess.turn() === 'w' ? 'White' : 'Black'}`);
+    } catch (e) {
+      console.warn("FEN load failed");
+    }
   }
+}
+
+function handleBoardChanges() {
+  if (mouseButtonDown) return;
+
+  const now = Date.now();
+  if (now - lastFENCheck < 1000) return;
+  lastFENCheck = now;
+
+  const shapesSVG = document.querySelector('svg.cg-shapes');
+  const currentLines = shapesSVG ? shapesSVG.querySelectorAll('line').length : 0;
+
+  if (currentLines === 0 && lastArrows.size > 0) {
+    console.log("All arrows cleared → resetting");
+    moveHistory = [];
+    lastArrows.clear();
+    clearChatInput();
+    syncBoardToChess();
+    return;
+  }
+
+  getCurrentFEN().then(currentFEN => {
+    if (currentFEN && currentFEN !== lastKnownFEN) {
+      console.log("Real move detected → resetting");
+      moveHistory = [];
+      lastArrows.clear();
+      clearChatInput();
+      syncBoardToChess();
+    }
+  });
 }
 
 function getCurrentFEN() {
@@ -76,16 +144,22 @@ function getCurrentFEN() {
 
   isFlipped = cgWrap.classList.contains('orientation-black');
 
+  let isBlackToMove = false;
+  const moveList = document.querySelector('l4x');
+  if (moveList) {
+    const moves = moveList.querySelectorAll('kwdb');
+    isBlackToMove = (moves.length % 2 === 1);
+  }
+
   return new Promise(resolve => {
     let attempts = 0;
-    const maxAttempts = 10;
+    const maxAttempts = 5;
 
     function tryRead() {
       attempts++;
       const pieces = document.querySelectorAll('piece');
       const board = Array(8).fill().map(() => Array(8).fill(''));
       let squareSize = cgWrap.offsetWidth / 8 || 64;
-
       let foundPieces = 0;
 
       pieces.forEach(piece => {
@@ -112,7 +186,6 @@ function getCurrentFEN() {
         else if (className.includes('bishop')) type = 'b';
         else if (className.includes('knight')) type = 'n';
         else if (className.includes('pawn')) type = 'p';
-
         if (!type) return;
 
         const color = className.includes('white') ? 'w' : 'b';
@@ -139,55 +212,49 @@ function getCurrentFEN() {
           if (empty) fen += empty;
           if (r < 7) fen += '/';
         }
-        resolve(fen + (isFlipped ? ' b' : ' w') + ' - - 0 1');
+        const sideToMove = isBlackToMove ? 'b' : 'w';
+        resolve(fen + ` ${sideToMove} - - 0 1`);
       } else {
-        setTimeout(tryRead, 60);
+        setTimeout(tryRead, 100);
       }
     }
     tryRead();
   });
 }
 
-function processFinalArrows() {
+function addFinalArrowToHistory() {
   const shapesSVG = document.querySelector('svg.cg-shapes');
   if (!shapesSVG) return;
 
   const lines = shapesSVG.querySelectorAll('line');
-  const currentArrowSet = new Set();
+  if (lines.length === 0) return;
 
-  lines.forEach(line => {
-    let x1 = parseFloat(line.getAttribute('x1'));
-    let y1 = parseFloat(line.getAttribute('y1'));
-    let x2 = parseFloat(line.getAttribute('x2'));
-    let y2 = parseFloat(line.getAttribute('y2'));
+  const line = lines[lines.length - 1];
 
-    if (isNaN(x1) || isNaN(y1) || isNaN(x2) || isNaN(y2)) return;
+  let x1 = parseFloat(line.getAttribute('x1'));
+  let y1 = parseFloat(line.getAttribute('y1'));
+  let x2 = parseFloat(line.getAttribute('x2'));
+  let y2 = parseFloat(line.getAttribute('y2'));
 
-    const from = coordsToSquare(x1, y1);
-    const to = coordsToSquare(x2, y2);
+  if (isNaN(x1) || isNaN(y1) || isNaN(x2) || isNaN(y2)) return;
 
-    if (!from || !to || from === to) return;
+  const from = coordsToSquare(x1, y1);
+  const to = coordsToSquare(x2, y2);
 
-    const key = `${from}-${to}`;
-    currentArrowSet.add(key);
+  if (!from || !to || from === to) return;
 
-    if (!lastArrows.has(key)) {
-      processNewArrow(from, to);
-      lastArrows.add(key);
-      console.log(`Final arrow: ${from} → ${to}`);
-	  console.log(chess.ascii());
-	  console.log(chess.turn());
-    }
-  });
+  const key = `${from}-${to}`;
+  if (lastArrows.has(key)) return;
 
-  lastArrows.forEach(k => {
-    if (!currentArrowSet.has(k)) lastArrows.delete(k);
-  });
+  processNewArrow(from, to);
+  lastArrows.add(key);
 }
 
 function coordsToSquare(x, y) {
-  const file = Math.round((x + 4) * 7 / 8);
-  const rank = Math.round((y + 4) * 7 / 8);
+  // Precise mapping for Lichess cg-shapes viewBox="-4 -4 8 8"
+  // We add a small bias toward the center of the square for better edge handling
+  const file = Math.floor(((x + 4) / 8) * 8);
+  const rank = Math.floor(((y + 4) / 8) * 8);
 
   let f = Math.max(0, Math.min(7, file));
   let r = Math.max(0, Math.min(7, rank));
@@ -201,24 +268,32 @@ function coordsToSquare(x, y) {
 }
 
 function processNewArrow(from, to) {
-  if (!chess) {
-    showMove(`${from}→${to}`);
-    return;
-  }
+  if (!chess) return;
 
   const uci = from + to;
+  let san = null;
+  let isLegal = false;
 
   try {
-    let move = chess.move(uci) || chess.move(uci, { sloppy: true }) || chess.move({ from, to, promotion: 'q' });
-    if (move) {
-      showMove(move.san);
-      console.log(`✅ ${uci} → ${move.san}`);
-      return;
-    }
-  } catch (e) {}
+    let move = chess.move(uci) ||
+               chess.move(uci, { sloppy: true }) ||
+               chess.move({ from, to, promotion: 'q' });
 
-  showMove(`${from}→${to}`);
-  console.log(`Raw arrow: ${from}→${to}`);
+    if (move) {
+      san = move.san;
+      isLegal = true;
+    }
+  } catch (e) {
+    console.log(`Move attempt failed for ${uci}:`, e.message);
+  }
+
+  if (isLegal) {
+    moveHistory.push(san);
+    fillChatInput();
+    console.log(`Added legal move: ${san} (${from}→${to})`);
+  } else {
+    console.log(`Ignored illegal: ${from}→${to}`);
+  }
 }
 
 initExtension();
