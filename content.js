@@ -1,4 +1,4 @@
-console.log("Lichess Arrow Tracker v7.5 loaded");
+console.log("Lichess Arrow Tracker v8.3 loaded");
 
 let chess = null;
 let lastArrows = new Set();
@@ -6,52 +6,22 @@ let moveHistory = [];
 let mouseButtonDown = false;
 let lastKnownFEN = "";
 let lastFENCheck = 0;
+let isShiftPressed = false;
 
 function getMyUsername() {
-  // Primary method: the user_tag button in the top bar
   const userTag = document.getElementById('user_tag');
-  if (userTag) {
-    const name = userTag.textContent.trim();
-    if (name) return name.toLowerCase();
-  }
-
-  // Fallback
-  const headerLink = document.querySelector('a.user-link[href^="/@/"]');
-  if (headerLink) {
-    const name = headerLink.textContent.trim();
-    if (name) return name.toLowerCase();
-  }
-
+  if (userTag) return userTag.textContent.trim().toLowerCase();
   return null;
 }
 
 function isSpectating() {
   const myUsername = getMyUsername();
-  if (!myUsername) {
-    console.log("Could not detect my username");
-    return true; // safe default
-  }
+  if (!myUsername) return true;
 
-  console.log("Detected my username:", myUsername);
+  const playerLinks = document.querySelectorAll('.player .user-link, .player-top .user-link, .player-bottom .user-link, .user-link');
+  const playerNames = Array.from(playerLinks).map(el => el.textContent.trim().toLowerCase());
 
-  // Find the two players on the board
-  const playerLinks = document.querySelectorAll('.player .user-link, .player-top .user-link, .player-bottom .user-link');
-  
-  let imPlaying = false;
-
-  playerLinks.forEach(link => {
-    const name = link.textContent.trim().toLowerCase();
-    if (name.includes(myUsername)) {
-      imPlaying = true;
-    }
-  });
-
-  // Extra check: if there are exactly two player links and neither is me, we're spectating
-  if (playerLinks.length >= 2 && !imPlaying) {
-    return true;
-  }
-
-  return !imPlaying;
+  return !playerNames.some(name => name.includes(myUsername));
 }
 
 function clearChatInput() {
@@ -71,7 +41,7 @@ function getLastRealMoveContext() {
   if (moves.length === 0) return "";
 
   const lastMoveText = moves[moves.length - 1].textContent.trim();
-  const moveNumber = Math.floor(moves.length / 2) + 1;
+  const moveNumber = Math.floor((moves.length + 1) / 2);
   const isBlackMove = (moves.length % 2 === 0);
 
   if (isBlackMove) {
@@ -81,30 +51,52 @@ function getLastRealMoveContext() {
   }
 }
 
-function fillChatInput() {
-  if (moveHistory.length === 0) return;
+function fillChatInput(newMove) {
+  if (!newMove) return;
 
   const chatInput = document.querySelector('input.mchat__say, .mchat__say');
-  if (!chatInput) return;
+  const notesTextarea = document.querySelector('.mchat__note');
 
-  const context = getLastRealMoveContext();
-  const prefix = isSpectating() ? "" : "/w ";
+  // Detect active tab
+  const activeTab = document.querySelector('.mchat__tab-active');
+  const notesTabActive = activeTab && activeTab.classList.contains('note');
 
-  let fullText = prefix;
+  const target = notesTabActive && notesTextarea ? notesTextarea : chatInput;
+  if (!target) return;
 
-  if (context) {
-    fullText += `(${context}) `;
+  let currentText = target.value.trim();
+
+  // If empty or doesn't look like our line, start fresh
+  if (!currentText || !currentText.includes('(')) {
+    const context = getLastRealMoveContext();
+    let prefix = "";
+
+    // Add /w ONLY when in normal chat room AND actually playing
+    if (!notesTabActive) {
+      const isWhisperInput = chatInput && chatInput.classList.contains('whisper');
+      if (!isWhisperInput && !isSpectating()) {
+        prefix = "/w ";
+      }
+    }
+
+    currentText = prefix;
+    if (context) currentText += `(${context}) `;
   }
 
-  fullText += moveHistory.join(', ');
+  // Append new move cleanly
+  if (currentText && !currentText.endsWith(' ')) currentText += ' ';
+  if (currentText && !currentText.endsWith(', ') && !currentText.endsWith(') ')) {
+    currentText += ', ';
+  }
+  currentText += newMove;
 
-  chatInput.focus();
-  chatInput.value = fullText;
+  target.focus();
+  target.value = currentText;
 
   const event = new Event('input', { bubbles: true });
-  chatInput.dispatchEvent(event);
+  target.dispatchEvent(event);
 
-  console.log("Filled chat with:", fullText);
+  console.log("Appended to", notesTabActive ? "Notes" : "Chat room", ":", currentText);
 }
 
 function initExtension() {
@@ -116,14 +108,12 @@ function initExtension() {
   chess = new Chess();
   syncBoardToChess();
 
-  // Debug: show detected username on load
-  const username = getMyUsername();
-  console.log("My detected username:", username || "unknown");
+  console.log("Detected username:", getMyUsername() || "unknown");
 
-  document.addEventListener('mousedown', e => {
-    if (e.button === 2) mouseButtonDown = true;
-  });
+  document.addEventListener('keydown', e => { if (e.key === 'Shift') isShiftPressed = true; });
+  document.addEventListener('keyup',   e => { if (e.key === 'Shift') isShiftPressed = false; });
 
+  document.addEventListener('mousedown', e => { if (e.button === 2) mouseButtonDown = true; });
   document.addEventListener('mouseup', e => {
     if (e.button === 2) {
       mouseButtonDown = false;
@@ -137,23 +127,17 @@ function initExtension() {
   document.addEventListener('keydown', e => {
     if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 'c') {
       e.preventDefault();
-      fillChatInput();
+      fillChatInput(""); // refresh full line
     }
   });
 
-  console.log("✅ v7.5 ready — improved player detection");
+  console.log("✅ v8.3 ready — append mode (you can type freely)");
 }
 
 async function syncBoardToChess() {
   const fen = await getCurrentFEN();
   if (fen && chess) {
-    try {
-      chess.load(fen);
-      lastKnownFEN = fen;
-      console.log(`Virtual board synced. Turn: ${chess.turn() === 'w' ? 'White' : 'Black'}`);
-    } catch (e) {
-      console.warn("FEN load failed");
-    }
+    try { chess.load(fen); lastKnownFEN = fen; } catch (e) {}
   }
 }
 
@@ -168,7 +152,6 @@ function handleBoardChanges() {
   const currentLines = shapesSVG ? shapesSVG.querySelectorAll('line').length : 0;
 
   if (currentLines === 0 && lastArrows.size > 0) {
-    console.log("All arrows cleared → resetting");
     moveHistory = [];
     lastArrows.clear();
     clearChatInput();
@@ -178,15 +161,13 @@ function handleBoardChanges() {
 
   getCurrentFEN().then(currentFEN => {
     if (currentFEN && currentFEN !== lastKnownFEN) {
-      console.log("Real move detected → resetting");
-      moveHistory = [];
-      lastArrows.clear();
-      clearChatInput();
+      lastKnownFEN = currentFEN;
       syncBoardToChess();
     }
   });
 }
 
+// getCurrentFEN, addFinalArrowToHistory, coordsToSquare, processNewArrow remain the same as v8.2
 function getCurrentFEN() {
   const cgWrap = document.querySelector('.cg-wrap');
   if (!cgWrap) return null;
@@ -295,7 +276,7 @@ function addFinalArrowToHistory() {
   const key = `${from}-${to}`;
   if (lastArrows.has(key)) return;
 
-  processNewArrow(from, to);
+  processNewArrow(from, to, isShiftPressed);
   lastArrows.add(key);
 }
 
@@ -306,41 +287,55 @@ function coordsToSquare(x, y) {
   let f = Math.max(0, Math.min(7, file));
   let r = Math.max(0, Math.min(7, rank));
 
-  if (isFlipped) {
-    f = 7 - f;
-    r = 7 - r;
-  }
+  if (isFlipped) { f = 7 - f; r = 7 - r; }
 
   return String.fromCharCode(97 + f) + (8 - r);
 }
 
-function processNewArrow(from, to) {
+function processNewArrow(from, to, isPlanning) {
   if (!chess) return;
 
-  const uci = from + to;
   let san = null;
-  let isLegal = false;
 
   try {
-    let move = chess.move(uci) ||
-               chess.move(uci, { sloppy: true }) ||
-               chess.move({ from, to, promotion: 'q' });
-
-    if (move) {
-      san = move.san;
-      isLegal = true;
+    if ((from === "e1" && (to === "g1" || to === "c1")) || 
+        (from === "e8" && (to === "g8" || to === "c8"))) {
+      san = (to[0] === 'g') ? "O-O" : "O-O-O";
+    } else {
+      let move = chess.move(from + to) || chess.move(from + to, { sloppy: true }) || chess.move({ from, to, promotion: 'q' });
+      if (move) san = move.san;
     }
-  } catch (e) {
-    console.log(`Move attempt failed for ${uci}:`, e.message);
+  } catch (e) {}
+
+  if (!san) {
+    try {
+      const piece = chess.get(from);
+      if (piece) {
+        const p = piece.type.toUpperCase();
+        const capture = chess.get(to) ? 'x' : '';
+        san = (p === 'P' ? '' : p) + capture + to;
+      } else {
+        san = `${from}→${to}`;
+      }
+    } catch (_) {
+      san = `${from}→${to}`;
+    }
   }
 
-  if (isLegal) {
-    moveHistory.push(san);
-    fillChatInput();
-    console.log(`Added legal move: ${san} (${from}→${to})`);
-  } else {
-    console.log(`Ignored illegal: ${from}→${to}`);
-  }
+  // Force move on board
+  try {
+    const piece = chess.get(from);
+    if (piece) {
+      chess.remove(from);
+      chess.put(piece, to);
+    }
+  } catch (e) {}
+
+  const cleanMove = san.replace(/[+#]/g, '');
+  moveHistory.push(cleanMove);
+  fillChatInput(cleanMove);
+
+  console.log(`Appended: ${cleanMove} (${from}→${to})`);
 }
 
 initExtension();
